@@ -7,8 +7,9 @@
 
   <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <!-- StPageFlip -->
-  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+  <!-- jQuery + Turn.js -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/blasten/turn.js@master/turn.min.js"></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -95,24 +96,20 @@
     #book-wrap.visible { opacity: 1; }
 
     /* ── Flipbook container ── */
-    #flipbook { display: block; }
+    #flipbook { display: block; position: relative; }
 
-    /* StPageFlip page styling */
+    /* Turn.js page styling */
     .page {
       background: var(--paper);
-      display: flex;
-      align-items: center;
-      justify-content: center;
       overflow: hidden;
     }
     .page canvas {
       display: block;
-      max-width: 100%;
-      max-height: 100%;
+      width: 100%;
+      height: 100%;
     }
-    /* Shine reduction — StPageFlip draws gloss on internal canvas layers */
-    .stf__block canvas { opacity: 0.3; }
-    .stf__block canvas:first-child { opacity: 1; }
+    /* Shine reduction — Turn.js gradient overlays */
+    .p1, .p2, .p3, .p4 { opacity: 0.25 !important; }
 
     /* Hard cover pages */
     .page.--hard {
@@ -399,54 +396,45 @@
   // Trigger background render — don't block reveal
   renderAround(0);
 
-  // ── Init StPageFlip ────────────────────────────────────────────────
-  const pageFlip = new St.PageFlip(flipEl, {
-    width:  pageW,
-    height: pageH,
-    size: 'fixed',
-    minWidth: pageW,
-    maxWidth: pageW,
-    minHeight: pageH,
-    maxHeight: pageH,
-    showCover: true,
-    useMouseEvents: true,
-    drawShadow: false,
-    flippingTime: 900,
-    usePortrait: false,
-    startPage: 0,
-    autoSize: false,
-    clickEventForward: true,
-    swipeDistance: 10,
-    showPageCorners: true,
-    mobileScrollSupport: true,
+  // ── Init Turn.js ──────────────────────────────────────────────────
+  const $book = $(flipEl);
+  $book.turn({
+    width:        pageW * 2,
+    height:       pageH,
+    autoCenter:   true,
+    display:      'double',
+    cover:        true,
+    duration:     800,
+    acceleration: true,
+    gradients:    true,
+    elevation:    40,
+    when: {
+      turning: function(e, page) {
+        renderAround(page - 1); // Turn.js 1-indexed → canvas 0-indexed
+      },
+      turned: function(e, page) {
+        updateUI(page);
+      }
+    }
   });
-
-  pageFlip.loadFromHTML(flipEl.querySelectorAll('.page'));
 
   // ── Update UI ──────────────────────────────────────────────────────
-  function updateUI() {
-    const cur = pageFlip.getCurrentPageIndex();
-    const total = pageFlip.getPageCount();
-    // StPageFlip: 0 = front cover, so real pages start at 1
-    const displayPage = Math.max(0, cur);
-    pageInfo.textContent = `${displayPage} / ${total - 2}`;
-    btnFirst.disabled = cur <= 0;
-    btnPrev.disabled  = cur <= 0;
-    btnNext.disabled  = cur >= total - 1;
-    btnLast.disabled  = cur >= total - 1;
+  function updateUI(page) {
+    const cur   = page ?? $book.turn('page');
+    const total = $book.turn('pages');
+    const display = Math.max(0, cur - 1); // 1-indexed → display 0 for cover
+    pageInfo.textContent = `${display} / ${total - 2}`;
+    btnFirst.disabled = cur <= 1;
+    btnPrev.disabled  = cur <= 1;
+    btnNext.disabled  = cur >= total;
+    btnLast.disabled  = cur >= total;
   }
 
-  pageFlip.on('flip', (e) => {
-    updateUI();
-    renderAround(e.data); // e.data = new page index
-  });
-  pageFlip.on('changeState', updateUI);
-
   // ── Button handlers ────────────────────────────────────────────────
-  btnFirst.addEventListener('click', () => pageFlip.flip(0));
-  btnPrev.addEventListener('click',  () => pageFlip.flipPrev());
-  btnNext.addEventListener('click',  () => pageFlip.flipNext());
-  btnLast.addEventListener('click',  () => pageFlip.flip(pageFlip.getPageCount() - 1));
+  btnFirst.addEventListener('click', () => $book.turn('page', 1));
+  btnPrev.addEventListener('click',  () => $book.turn('previous'));
+  btnNext.addEventListener('click',  () => $book.turn('next'));
+  btnLast.addEventListener('click',  () => $book.turn('page', $book.turn('pages')));
 
   btnFs.addEventListener('click', () => {
     if (!document.fullscreenElement) {
@@ -460,10 +448,10 @@
 
   // ── Keyboard ──────────────────────────────────────────────────────
   document.addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  pageFlip.flipNext();
-    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    pageFlip.flipPrev();
-    if (e.key === 'Home') pageFlip.flip(0);
-    if (e.key === 'End')  pageFlip.flip(pageFlip.getPageCount() - 1);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') $book.turn('next');
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   $book.turn('previous');
+    if (e.key === 'Home') $book.turn('page', 1);
+    if (e.key === 'End')  $book.turn('page', $book.turn('pages'));
   });
 
   // ── Reveal ────────────────────────────────────────────────────────
