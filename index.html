@@ -110,6 +110,10 @@
       max-width: 100%;
       max-height: 100%;
     }
+    /* Shine reduction — StPageFlip draws gloss on internal canvas layers */
+    .stf__block canvas { opacity: 0.6; }
+    .stf__block canvas:first-child { opacity: 1; } /* page content stays sharp */
+
     /* Hard cover pages */
     .page.--hard {
       background: var(--ink);
@@ -406,8 +410,8 @@
     maxHeight: pageH,
     showCover: true,
     useMouseEvents: true,
-    drawShadow: true,
-    flippingTime: 800,
+    drawShadow: false,
+    flippingTime: 900,
     usePortrait: false,
     startPage: 0,
     autoSize: false,
