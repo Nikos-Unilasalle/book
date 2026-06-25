@@ -312,7 +312,7 @@
   try {
     pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
   } catch (e) {
-    showError(`Impossible de charger "${pdfName}". Vérifiez que le fichier existe dans pdfs/.`);
+    showError(`Erreur: ${e?.message || e}  |  URL: ${pdfUrl}`);
     return;
   }
 
