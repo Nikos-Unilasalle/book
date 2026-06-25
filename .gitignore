@@ -1,0 +1,7 @@
+# Server files (optionnel, garder si usage local aussi)
+__pycache__/
+*.pyc
+.env
+
+# OS
+.DS_Store

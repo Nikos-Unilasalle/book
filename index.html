@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flipbook</title>
+
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- StPageFlip -->
+  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1612;
+      --bg2: #221e19;
+      --paper: #f5f0e8;
+      --paper-shadow: #e8dfc8;
+      --ink: #2c2417;
+      --accent: #c8a96e;
+      --accent2: #a07840;
+      --ui-bg: rgba(26, 22, 18, 0.92);
+      --radius: 4px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--accent);
+      font-family: 'Georgia', serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ── Loading screen ── */
+    #loading {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 20px;
+      background: var(--bg);
+      z-index: 100;
+      transition: opacity 0.6s ease;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+
+    .loader-title {
+      font-size: 1.1rem;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      opacity: 0.7;
+    }
+    .loader-bar-wrap {
+      width: 200px; height: 2px;
+      background: rgba(200,169,110,0.2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .loader-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .loader-pages { font-size: 0.75rem; opacity: 0.4; letter-spacing: 0.1em; }
+
+    /* ── Error screen ── */
+    #error {
+      position: fixed; inset: 0;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px;
+      background: var(--bg);
+      z-index: 100;
+    }
+    #error.visible { display: flex; }
+    #error h2 { color: #e07070; font-size: 1rem; letter-spacing: 0.1em; }
+    #error p { color: rgba(200,169,110,0.5); font-size: 0.8rem; }
+
+    /* ── Main stage ── */
+    #stage {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── Book wrapper ── */
+    #book-wrap {
+      position: relative;
+      opacity: 0;
+      transition: opacity 0.8s ease;
+    }
+    #book-wrap.visible { opacity: 1; }
+
+    /* ── Flipbook container ── */
+    #flipbook { display: block; }
+
+    /* StPageFlip page styling */
+    .page {
+      background: var(--paper);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .page canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    /* Hard cover pages */
+    .page.--hard {
+      background: var(--ink);
+      overflow: hidden;
+    }
+    .page.--hard canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* ── Controls ── */
+    #controls {
+      position: fixed;
+      bottom: 28px; left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--ui-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(200,169,110,0.15);
+      border-radius: 40px;
+      padding: 10px 20px;
+      z-index: 50;
+      opacity: 0;
+      transition: opacity 0.6s ease 0.4s;
+    }
+    #controls.visible { opacity: 1; }
+
+    .ctrl-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--accent); padding: 4px 8px;
+      font-size: 1.1rem; border-radius: 20px;
+      transition: color 0.2s, background 0.2s;
+      line-height: 1;
+    }
+    .ctrl-btn:hover { color: #fff; background: rgba(200,169,110,0.15); }
+    .ctrl-btn:disabled { opacity: 0.25; cursor: default; }
+    .ctrl-btn:disabled:hover { color: var(--accent); background: none; }
+
+    #page-info {
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      color: rgba(200,169,110,0.55);
+      min-width: 80px;
+      text-align: center;
+    }
+
+    /* Separator */
+    .sep {
+      width: 1px; height: 16px;
+      background: rgba(200,169,110,0.2);
+    }
+
+    /* ── Keyboard hint ── */
+    #hint {
+      position: fixed;
+      bottom: 84px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      color: rgba(200,169,110,0.3);
+      z-index: 50;
+      opacity: 0;
+      transition: opacity 0.6s ease 1s;
+      white-space: nowrap;
+    }
+    #hint.visible { opacity: 1; }
+
+    /* ── Ambient vignette ── */
+    #vignette {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 10;
+      background: radial-gradient(ellipse at center,
+        transparent 55%,
+        rgba(15, 12, 9, 0.65) 100%
+      );
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      #hint { display: none; }
+      #controls { padding: 8px 14px; gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="vignette"></div>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="loader-title">CHARGEMENT</div>
+  <div class="loader-bar-wrap"><div class="loader-bar" id="loader-bar"></div></div>
+  <div class="loader-pages" id="loader-pages">0 / 0 pages</div>
+</div>
+
+<!-- Error -->
+<div id="error">
+  <h2>PDF INTROUVABLE</h2>
+  <p id="error-msg"></p>
+</div>
+
+<!-- Stage -->
+<div id="stage">
+  <div id="book-wrap">
+    <div id="flipbook"></div>
+  </div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+  <button class="ctrl-btn" id="btn-first" title="Première page">⟪</button>
+  <button class="ctrl-btn" id="btn-prev"  title="Page précédente">‹</button>
+  <span id="page-info">— / —</span>
+  <button class="ctrl-btn" id="btn-next"  title="Page suivante">›</button>
+  <button class="ctrl-btn" id="btn-last"  title="Dernière page">⟫</button>
+  <div class="sep"></div>
+  <button class="ctrl-btn" id="btn-fullscreen" title="Plein écran">⛶</button>
+</div>
+
+<div id="hint">← → pour tourner les pages · clic sur les bords pour feuilleter</div>
+
+<script>
+(async () => {
+  // ── Resolve PDF from URL ──────────────────────────────────────────
+  // Supports:
+  //   ?pdf=rapport          → pdfs/rapport.pdf  (same repo)
+  //   ?pdf=rapport.pdf      → pdfs/rapport.pdf
+  //   ?url=https://...      → external PDF URL
+  const params  = new URLSearchParams(location.search);
+  const pdfParam = params.get('pdf');
+  const urlParam = params.get('url');
+
+  if (!pdfParam && !urlParam) {
+    showError('Paramètre manquant. Usage : ?pdf=nom-du-fichier');
+    return;
+  }
+
+  let pdfUrl, pdfName;
+  if (urlParam) {
+    pdfUrl  = urlParam;
+    pdfName = urlParam.split('/').pop().replace(/\.pdf$/i, '');
+  } else {
+    const stem = pdfParam.replace(/\.pdf$/i, '');
+    const base = location.pathname.replace(/\/[^/]*$/, ''); // handle subdirectory deploys
+    pdfUrl  = `${base}/pdfs/${stem}.pdf`;
+    pdfName = stem;
+  }
+
+  // ── DOM refs ──────────────────────────────────────────────────────
+  const loadingEl  = document.getElementById('loading');
+  const loaderBar  = document.getElementById('loader-bar');
+  const loaderPages= document.getElementById('loader-pages');
+  const errorEl    = document.getElementById('error');
+  const errorMsg   = document.getElementById('error-msg');
+  const bookWrap   = document.getElementById('book-wrap');
+  const controls   = document.getElementById('controls');
+  const hint       = document.getElementById('hint');
+  const pageInfo   = document.getElementById('page-info');
+  const btnFirst   = document.getElementById('btn-first');
+  const btnPrev    = document.getElementById('btn-prev');
+  const btnNext    = document.getElementById('btn-next');
+  const btnLast    = document.getElementById('btn-last');
+  const btnFs      = document.getElementById('btn-fullscreen');
+
+  function showError(msg) {
+    loadingEl.classList.add('hidden');
+    errorEl.classList.add('visible');
+    errorMsg.textContent = msg;
+  }
+
+  // ── Compute book dimensions ────────────────────────────────────────
+  function getBookDimensions(pdfWidth, pdfHeight) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const maxH = vh * 0.82;
+    const maxW = vw * 0.90;
+
+    // Two pages side by side
+    const aspect = pdfWidth / pdfHeight;
+    let pageH = maxH;
+    let pageW = pageH * aspect;
+
+    if (pageW * 2 > maxW) {
+      pageW = maxW / 2;
+      pageH = pageW / aspect;
+    }
+
+    return { pageW: Math.floor(pageW), pageH: Math.floor(pageH) };
+  }
+
+  // ── Load PDF metadata ─────────────────────────────────────────────
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let pdfDoc;
+  try {
+    pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+  } catch (e) {
+    showError(`Impossible de charger "${pdfName}". Vérifiez que le fichier existe dans pdfs/.`);
+    return;
+  }
+
+  const totalPages = pdfDoc.numPages;
+  loaderBar.style.width = '100%';
+  loaderPages.textContent = `${totalPages} pages — ouverture…`;
+
+  // Get dimensions from first page only
+  const firstPage = await pdfDoc.getPage(1);
+  const vp0 = firstPage.getViewport({ scale: 1 });
+  const { pageW, pageH } = getBookDimensions(vp0.width, vp0.height);
+  const SCALE = pageW / vp0.width;
+
+  // ── Lazy render engine ────────────────────────────────────────────
+  // canvases[i] corresponds to PDF page i+1 (0-indexed)
+  const canvases = new Array(totalPages).fill(null);
+  const rendered = new Set();
+  const rendering = new Set();
+  const BUFFER = 4; // pages to pre-render around current spread
+
+  async function renderPage(idx) {
+    if (idx < 0 || idx >= totalPages) return;
+    if (rendered.has(idx) || rendering.has(idx)) return;
+    rendering.add(idx);
+    try {
+      const page = await pdfDoc.getPage(idx + 1);
+      const vp = page.getViewport({ scale: SCALE });
+      const canvas = canvases[idx];
+      if (!canvas) return;
+      canvas.width  = Math.floor(vp.width);
+      canvas.height = Math.floor(vp.height);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      rendered.add(idx);
+    } finally {
+      rendering.delete(idx);
+    }
+  }
+
+  async function renderAround(centerFlipIdx) {
+    // centerFlipIdx = StPageFlip page index (0=front cover → PDF page 0)
+    const start = Math.max(0, centerFlipIdx - BUFFER);
+    const end   = Math.min(totalPages - 1, centerFlipIdx + BUFFER);
+    for (let i = start; i <= end; i++) {
+      renderPage(i); // fire-and-forget, intentional
+    }
+  }
+
+  // ── Build flipbook DOM ─────────────────────────────────────────────
+  const flipEl = document.getElementById('flipbook');
+  flipEl.style.width  = (pageW * 2) + 'px';
+  flipEl.style.height = pageH + 'px';
+
+  // Hard cover (front) — first PDF page canvas
+  const coverFront = document.createElement('div');
+  coverFront.className = 'page --hard';
+  const coverCanvas = document.createElement('canvas');
+  coverCanvas.width  = pageW;
+  coverCanvas.height = pageH;
+  canvases[0] = coverCanvas;
+  coverFront.appendChild(coverCanvas);
+  flipEl.appendChild(coverFront);
+
+  // Content pages — empty canvases, filled lazily
+  for (let i = 1; i < totalPages; i++) {
+    const div = document.createElement('div');
+    div.className = 'page';
+    const canvas = document.createElement('canvas');
+    canvas.width  = pageW;
+    canvas.height = pageH;
+    canvases[i] = canvas;
+    div.appendChild(canvas);
+    flipEl.appendChild(div);
+  }
+
+  // Hard cover (back) — blank dark
+  const coverBack = document.createElement('div');
+  coverBack.className = 'page --hard';
+  flipEl.appendChild(coverBack);
+
+  // Trigger background render — don't block reveal
+  renderAround(0);
+
+  // ── Init StPageFlip ────────────────────────────────────────────────
+  const pageFlip = new St.PageFlip(flipEl, {
+    width:  pageW,
+    height: pageH,
+    size: 'fixed',
+    minWidth: pageW,
+    maxWidth: pageW,
+    minHeight: pageH,
+    maxHeight: pageH,
+    showCover: true,
+    useMouseEvents: true,
+    drawShadow: true,
+    flippingTime: 800,
+    usePortrait: false,
+    startPage: 0,
+    autoSize: false,
+    clickEventForward: true,
+    swipeDistance: 30,
+    showPageCorners: true,
+    mobileScrollSupport: true,
+  });
+
+  pageFlip.loadFromHTML(flipEl.querySelectorAll('.page'));
+
+  // ── Update UI ──────────────────────────────────────────────────────
+  function updateUI() {
+    const cur = pageFlip.getCurrentPageIndex();
+    const total = pageFlip.getPageCount();
+    // StPageFlip: 0 = front cover, so real pages start at 1
+    const displayPage = Math.max(0, cur);
+    pageInfo.textContent = `${displayPage} / ${total - 2}`;
+    btnFirst.disabled = cur <= 0;
+    btnPrev.disabled  = cur <= 0;
+    btnNext.disabled  = cur >= total - 1;
+    btnLast.disabled  = cur >= total - 1;
+  }
+
+  pageFlip.on('flip', (e) => {
+    updateUI();
+    renderAround(e.data); // e.data = new page index
+  });
+  pageFlip.on('changeState', updateUI);
+
+  // ── Button handlers ────────────────────────────────────────────────
+  btnFirst.addEventListener('click', () => pageFlip.flip(0));
+  btnPrev.addEventListener('click',  () => pageFlip.flipPrev());
+  btnNext.addEventListener('click',  () => pageFlip.flipNext());
+  btnLast.addEventListener('click',  () => pageFlip.flip(pageFlip.getPageCount() - 1));
+
+  btnFs.addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.();
+      btnFs.textContent = '✕';
+    } else {
+      document.exitFullscreen?.();
+      btnFs.textContent = '⛶';
+    }
+  });
+
+  // ── Keyboard ──────────────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  pageFlip.flipNext();
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    pageFlip.flipPrev();
+    if (e.key === 'Home') pageFlip.flip(0);
+    if (e.key === 'End')  pageFlip.flip(pageFlip.getPageCount() - 1);
+  });
+
+  // ── Reveal ────────────────────────────────────────────────────────
+  loadingEl.classList.add('hidden');
+  bookWrap.classList.add('visible');
+  controls.classList.add('visible');
+  hint.classList.add('visible');
+  updateUI();
+
+  // Set page title
+  document.title = decodeURIComponent(pdfName);
+})();
+</script>
+</body>
+</html>
