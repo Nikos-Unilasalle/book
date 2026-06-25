@@ -111,8 +111,8 @@
       max-height: 100%;
     }
     /* Shine reduction — StPageFlip draws gloss on internal canvas layers */
-    .stf__block canvas { opacity: 0.6; }
-    .stf__block canvas:first-child { opacity: 1; } /* page content stays sharp */
+    .stf__block canvas { opacity: 0.15; }
+    .stf__block canvas:first-child { opacity: 1; }
 
     /* Hard cover pages */
     .page.--hard {
@@ -416,7 +416,7 @@
     startPage: 0,
     autoSize: false,
     clickEventForward: true,
-    swipeDistance: 30,
+    swipeDistance: 10,
     showPageCorners: true,
     mobileScrollSupport: true,
   });
